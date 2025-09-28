@@ -8,6 +8,9 @@ import colorsys
 from transformers.dynamic_module_utils import get_imports
 import comfy.model_management
 from .imagefunc import *
+import transformers
+from transformers import AutoProcessor, AutoModelForCausalLM
+from .florence2.modeling_florence2 import Florence2ForConditionalGeneration
 
 colormap = ['blue', 'orange', 'green', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan', 'red',
             'lime', 'indigo', 'violet', 'aqua', 'magenta', 'coral', 'gold', 'tan', 'skyblue']
@@ -57,11 +60,12 @@ def load_model(version):
         snapshot_download(repo_id=repo_id, local_dir=model_path, ignore_patterns=["*.md", "*.txt"])
 
     try:
-        with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
-            # model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True)
-            model = AutoModelForCausalLM.from_pretrained(model_path, attn_implementation=attention, device_map=device,
-                                                         torch_dtype=torch.float32, trust_remote_code=True)
-            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+        if transformers.__version__ < '4.51.0':
+            with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports): #workaround for unnecessary flash_attn requirement
+                 model = AutoModelForCausalLM.from_pretrained(model_path, attn_implementation=attention, torch_dtype=torch.float32,trust_remote_code=True)
+        else:
+            model = Florence2ForConditionalGeneration.from_pretrained(model_path, attn_implementation=attention, dtype=torch.float32, trust_remote_code=True)
+        processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True, num_additional_image_tokens=1, num_additional_tokens=1)
     except Exception as e:
         try:
             model = AutoModelForCausalLM.from_pretrained(model_path, attn_implementation=attention, device_map=device,
@@ -71,10 +75,10 @@ def load_model(version):
             sys.path.append(model_path)
             # Import the Florence modules
             if version == 'large-PromptGen-v1.5':
-                from florence2_large.modeling_florence2 import Florence2ForConditionalGeneration
+                # from florence2_large.modeling_florence2 import Florence2ForConditionalGeneration
                 from florence2_large.configuration_florence2 import Florence2Config
             elif version == 'base-PromptGen-v1.5':
-                from florence2_base_ft.modeling_florence2 import Florence2ForConditionalGeneration
+                # from florence2_base_ft.modeling_florence2 import Florence2ForConditionalGeneration
                 from florence2_base_ft.configuration_florence2 import Florence2Config
             else:
                 log(f"Error loading model or tokenizer: {str(e)}", message_type='error')
