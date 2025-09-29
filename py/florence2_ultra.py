@@ -59,43 +59,13 @@ def load_model(version):
         from huggingface_hub import snapshot_download
         snapshot_download(repo_id=repo_id, local_dir=model_path, ignore_patterns=["*.md", "*.txt"])
 
-    try:
-        if transformers.__version__ < '4.51.0':
-            with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports): #workaround for unnecessary flash_attn requirement
-                 model = AutoModelForCausalLM.from_pretrained(model_path, attn_implementation=attention, torch_dtype=torch.float32,trust_remote_code=True)
-        else:
-            model = Florence2ForConditionalGeneration.from_pretrained(model_path, attn_implementation=attention, dtype=torch.float32, trust_remote_code=True)
-        processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True, num_additional_image_tokens=1, num_additional_tokens=1)
-    except Exception as e:
-        try:
-            model = AutoModelForCausalLM.from_pretrained(model_path, attn_implementation=attention, device_map=device,
-                                                         torch_dtype=torch.float32, trust_remote_code=True)
-            processor = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        except Exception as e:
-            sys.path.append(model_path)
-            # Import the Florence modules
-            if version == 'large-PromptGen-v1.5':
-                # from florence2_large.modeling_florence2 import Florence2ForConditionalGeneration
-                from florence2_large.configuration_florence2 import Florence2Config
-            elif version == 'base-PromptGen-v1.5':
-                # from florence2_base_ft.modeling_florence2 import Florence2ForConditionalGeneration
-                from florence2_base_ft.configuration_florence2 import Florence2Config
-            else:
-                log(f"Error loading model or tokenizer: {str(e)}", message_type='error')
-                return (None, None)
+    if transformers.__version__ < '4.51.0':
+        with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports): #workaround for unnecessary flash_attn requirement
+             model = AutoModelForCausalLM.from_pretrained(model_path, attn_implementation=attention, torch_dtype=torch.float32,trust_remote_code=True)
+    else:
+        model = Florence2ForConditionalGeneration.from_pretrained(model_path, attn_implementation=attention, dtype=torch.float32, trust_remote_code=True, weights_only=False)
 
-            # Load the model configuration
-            model_config = Florence2Config.from_pretrained(model_path)
-            # Load the model
-            with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
-                model = Florence2ForConditionalGeneration.from_pretrained(
-                    model_path,
-                    config=model_config,
-                    attn_implementation=attention,
-                    device_map=device
-                ).to(device)
-
-            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
 
     return (model.to(device), processor)
 
